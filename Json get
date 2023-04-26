@@ -1,0 +1,246 @@
+(async () => {
+    let out = {};
+    //out["pass_it"] = pass_it;
+    try {
+        let jobs = [];
+        let resp = await fetch(`https://${window.location.host.split('.').shift()}.gupy.io/`, {
+            "headers": {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+                "accept-language": "en-GB,en;q=0.9,es-CO;q=0.8,es;q=0.7",
+                "cache-control": "no-cache",
+                "pragma": "no-cache",
+                "sec-ch-ua": "\"Google Chrome\";v=\"105\", \"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"105\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"Windows\"",
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "none",
+                "sec-fetch-user": "?1",
+                "upgrade-insecure-requests": "1"
+            },
+            "referrerPolicy": "strict-origin-when-cross-origin",
+            "body": null,
+            "method": "GET",
+            "mode": "cors",
+            "credentials": "include"
+        });
+        //JSON.stringify(data)
+        //Texto
+        let data = await resp.text();
+        let doc = document.createElement('div');
+        doc.innerHTML = data;
+        if (doc.querySelector('div[class*="job-list"] tr')) {
+            let htmlJobs = doc.querySelectorAll('div[class*="job-list"] tr');
+            for (let elem of htmlJobs) {
+                let job = {};
+                job.reqid = elem.querySelector('a').href.split('/').pop().split('?').shift().trim();
+                job.url = elem.querySelector('a').href.split('?').shift().trim();
+                job.temp = 96;
+                let respDesc = await fetch(job.url, {
+                    "headers": {
+                        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+                        "accept-language": "en-GB,en;q=0.9,es-CO;q=0.8,es;q=0.7",
+                        "upgrade-insecure-requests": "1"
+                    },
+                    "referrerPolicy": "strict-origin-when-cross-origin",
+                    "body": null,
+                    "method": "GET",
+                    "mode": "cors",
+                    "credentials": "include"
+                });
+                //JSON.stringify(data)
+                //Texto
+                let dataDesc = await respDesc.text();
+                let docDesc = document.createElement('div');
+                docDesc.innerHTML = dataDesc;
+                if (docDesc.querySelector('script[id="__NEXT_DATA__"]')) {
+                    let jobJSON = JSON.parse(docDesc.querySelector('script[id="__NEXT_DATA__"]').textContent);
+                    job.title = jobJSON.title;
+                    job.source_jobtype = jobJSON.employmentType;
+                    let dateAux = new Date(jobJSON.datePosted);
+                    job.dateposted_raw = dateAux.toLocaleDateString("en-US");
+                    dateAux = new Date(jobJSON?.validThrough);
+                    job.dateclosed_raw = dateAux?.toLocaleDateString("en-US");
+                    job.source_location = [];
+                    job.source_location.push(jobJSON?.jobLocation?.address?.addressLocality?.split(',')?.shift());
+                    job.source_location.push(jobJSON?.jobLocation?.address?.addressRegion);
+                    job.source_location = job.source_location.filter(Boolean).join(", ");
+                    job.location = job.source_location;
+                    if (job.title.match(/Banco de Talentos|Talent Pool/i) || job.source_jobtype.match(/INTERN/i)) {
+                        continue;
+                    }
+                    let full_html = document.createElement('div');
+                    full_html.innerHTML = jobJSON["description"];
+                    if (full_html) {
+                        for (const a of full_html.querySelectorAll('p, span, li')) {
+                            if (a.textContent.search(/@|http|www./ig) > -1) {
+                                a.remove();
+                            }
+                        }
+                        let remove_selectors = ['a', 'script', 'i', 'img', 'style', 'button', 'figure', 'noscript', 'svg', 'form', 'input', 'iframe', 'link'];
+                        if (remove_selectors.length > 0) {
+                            remove_selectors.forEach(remove_selector => {
+                                for (const a of full_html.querySelectorAll(remove_selector)) {
+                                    a.remove();
+                                }
+                            });
+                        }
+                        job.html = full_html.innerHTML.trim();
+                        //job.html = removeTextBefore(job.html, '', false);
+                        //job.html = removeTextAfter(job.html, //, true);
+                        job.html = cleanHTML(job.html);
+                        let tmp = document.createElement('div');
+                        tmp.innerHTML = job.html;
+                        job.jobdesc = tmp.textContent.trim();
+                        job.jobdesc = cleanHTML(job.jobdesc);
+                    }
+                    jobs.push(job);
+                } else if (docDesc.querySelector('div[class="description"]')) {
+                    job.title = elem.querySelector('span[class="title"]').textContent.replace(/- [0-9]*/g, '').trim();
+                    job.source_location = elem.querySelector('td:nth-child(2)').textContent.trim();
+                    job.location = elem.querySelector('td:nth-child(2)').textContent.replace(/and Remote/ig, '').replace('/', ', ').trim();
+                    if (job.location == undefined || job.location == '' || job.location.match(/Remote Work/)) {
+                        job.location = 'HQ AQUI';
+                    }
+                    job.source_jobtype = elem.querySelector('td:nth-child(3)').textContent.replace(/employee/i, '').trim();
+                    if (job.title.match(/Banco de Talentos|Talent Pool/i) || job.source_jobtype.match(/INTERN/i)) {
+                        continue;
+                    }
+                    let full_html = docDesc.querySelector('div[class="description"]');
+                    if (full_html) {
+                        for (const a of full_html.querySelectorAll('p, span, li')) {
+                            if (a.textContent.search(/@|http|www./ig) > -1) {
+                                a.remove();
+                            }
+                        }
+                        let remove_selectors = ['a', 'script', 'i', 'img', 'style', 'button', 'figure', 'noscript', 'svg', 'form', 'input', 'iframe', 'link'];
+                        if (remove_selectors.length > 0) {
+                            remove_selectors.forEach(remove_selector => {
+                                for (const a of full_html.querySelectorAll(remove_selector)) {
+                                    a.remove();
+                                }
+                            });
+                        }
+                        job.html = full_html.innerHTML.trim();
+                        //job.html = removeTextBefore(job.html, '', false);
+                        //job.html = removeTextAfter(job.html, //, true);
+                        job.html = cleanHTML(job.html);
+                        let tmp = document.createElement('div');
+                        tmp.innerHTML = job.html;
+                        job.jobdesc = tmp.textContent.trim();
+                        job.jobdesc = cleanHTML(job.jobdesc);
+                    }
+                    jobs.push(job);
+                }
+            }
+        } else if (doc.querySelector('ul[data-testid="job-list__list"] > li[data-testid="job-list__listitem"]')) {
+            let htmlJobs = doc.querySelectorAll('ul[data-testid="job-list__list"] > li[data-testid="job-list__listitem"]');
+            for (let elem of htmlJobs) {
+                let job = {};
+                job.reqid = elem.querySelector('a').href.split('/').pop().split('?').shift().trim();
+                job.url = elem.querySelector('a').href.split('?').shift().trim();
+                job.temp = 96;
+                let respDesc = await fetch(job.url, {
+                    "headers": {
+                        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+                        "accept-language": "en-GB,en;q=0.9,es-CO;q=0.8,es;q=0.7",
+                        "upgrade-insecure-requests": "1"
+                    },
+                    "referrerPolicy": "strict-origin-when-cross-origin",
+                    "body": null,
+                    "method": "GET",
+                    "mode": "cors",
+                    "credentials": "include"
+                });
+                //JSON.stringify(data)
+                //Texto
+                let dataDesc = await respDesc.text();
+                let docDesc = document.createElement('div');
+                docDesc.innerHTML = dataDesc;
+                if (docDesc.querySelector('script[id="__NEXT_DATA__"]')) {
+                    let jobJSON = JSON.parse(docDesc.querySelector('script[id="__NEXT_DATA__"]').textContent);
+                    job.title = jobJSON.props.pageProps.job.name;
+                    job.source_jobtype = jobJSON.props.pageProps.job.jobType.split('vacancy_type_').pop().replace(/\_/g, ' ').replace('effective', 'Full Time');
+                    let dateAux = new Date(jobJSON.props.pageProps.job.publishedAt);
+                    job.dateposted_raw = dateAux.toLocaleDateString("en-US");
+                    dateAux = new Date(jobJSON?.props?.pageProps?.job?.expiresAt);
+                    job.dateclosed_raw = dateAux?.toLocaleDateString("en-US");
+                    job.source_location = [];
+                    job.source_location.push(jobJSON?.props?.pageProps?.job?.addressCity);
+                    job.source_location.push(jobJSON?.props?.pageProps?.job?.addressStateShortName);
+                    job.source_location = job.source_location.filter(Boolean).join(", ");
+                    job.location = job.source_location;
+                    if (job.title.match(/Banco de Talentos|Talent Pool/i) || job.source_jobtype.match(/INTERN|Talent Pool|apprentice/i)) {
+                        continue;
+                    }
+                    let full_html = document.createElement('div');
+                    full_html.innerHTML = jobJSON.props.pageProps.job["description"] + jobJSON.props.pageProps.job?.responsibilities + jobJSON.props.pageProps.job?.prerequisites;
+                    if (full_html) {
+                        for (const a of full_html.querySelectorAll('p, span, li')) {
+                            if (a.textContent.search(/@|http|www./ig) > -1) {
+                                a.remove();
+                            }
+                        }
+                        let remove_selectors = ['a', 'script', 'i', 'img', 'style', 'button', 'figure', 'noscript', 'svg', 'form', 'input', 'iframe', 'link'];
+                        if (remove_selectors.length > 0) {
+                            remove_selectors.forEach(remove_selector => {
+                                for (const a of full_html.querySelectorAll(remove_selector)) {
+                                    a.remove();
+                                }
+                            });
+                        }
+                        job.html = full_html.innerHTML.trim();
+                        //job.html = removeTextBefore(job.html, '', false);
+                        //job.html = removeTextAfter(job.html, //, true);
+                        job.html = cleanHTML(job.html);
+                        let tmp = document.createElement('div');
+                        tmp.innerHTML = job.html;
+                        job.jobdesc = tmp.textContent.trim();
+                        job.jobdesc = cleanHTML(job.jobdesc);
+                    }
+                    jobs.push(job);
+                } else if (docDesc.querySelector('div[class="description"]')) {
+                    job.title = elem.querySelector('a > div > div:nth-child(1)').textContent.replace(/- [0-9]*/g, '').trim();
+                    job.source_location = elem.querySelector('a > div > div:nth-child(2)').textContent.trim();
+                    job.location = elem.querySelector('a > div > div:nth-child(2)').textContent.replace(/and Remote/ig, '').replace('/', ', ').trim();
+                    if (job.location == undefined || job.location == '' || job.location.match(/Remote Work/)) {
+                        job.location = 'HQ AQUI';
+                    }
+                    job.source_jobtype = elem.querySelector('a > div > div:nth-child(3)').textContent.replace(/employee/i, '').trim();
+                    if (job.title.match(/Banco de Talentos|Talent Pool/i) || job.source_jobtype.match(/INTERN/i)) {
+                        continue;
+                    }
+                    let full_html = docDesc.querySelector('div[class="description"]');
+                    if (full_html) {
+                        for (const a of full_html.querySelectorAll('p, span, li')) {
+                            if (a.textContent.search(/@|http|www./ig) > -1) {
+                                a.remove();
+                            }
+                        }
+                        let remove_selectors = ['a', 'script', 'i', 'img', 'style', 'button', 'figure', 'noscript', 'svg', 'form', 'input', 'iframe', 'link'];
+                        if (remove_selectors.length > 0) {
+                            remove_selectors.forEach(remove_selector => {
+                                for (const a of full_html.querySelectorAll(remove_selector)) {
+                                    a.remove();
+                                }
+                            });
+                        }
+                        job.html = full_html.innerHTML.trim();
+                        //job.html = removeTextBefore(job.html, '', false);
+                        //job.html = removeTextAfter(job.html, //, true);
+                        job.html = cleanHTML(job.html);
+                        let tmp = document.createElement('div');
+                        tmp.innerHTML = job.html;
+                        job.jobdesc = tmp.textContent.trim();
+                        job.jobdesc = cleanHTML(job.jobdesc);
+                    }
+                    jobs.push(job);
+                }
+            }
+        }
+        out["jobs"] = jobs;
+    } catch (err) {
+        throw err;
+    }
+    return out;
+})();
